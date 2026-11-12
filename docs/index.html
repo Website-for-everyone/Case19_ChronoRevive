@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+
+<script>
+(function() {
+  const MOCK_DB = {"/api/showcase-models": {"status": "success", "models": [{"id": "mdl-01", "brand": "Omega", "model": "Speedmaster Professional 'Pre-Moon'", "year": "1968", "caliber": "Calibre 321 (Column Wheel Chronograph)", "restoration_hours": 74, "tasks": "Разборка колонного колеса, восстановление англажа мостов, замена сломанного триба минутного счетчика, сохранение оригинального ступенчатого циферблата.", "accuracy_result": "+1.8 сек/сутки, амплитуда 295°"}, {"id": "mdl-02", "brand": "Patek Philippe", "model": "Calatrava Automatic", "year": "1956", "caliber": "Calibre 12-600 AT (Ротор из 18K золота)", "restoration_hours": 92, "tasks": "Очистка эмалевого циферблата горячей сушкой, деликатная полировка золотого гильошированного ротора, регулировка спирали Breguet.", "accuracy_result": "+0.6 сек/сутки, амплитуда 310°"}, {"id": "mdl-03", "brand": "Rolex", "model": "Submariner 'Meters First'", "year": "1972", "caliber": "Calibre 1520", "restoration_hours": 58, "tasks": "Восстановление заводных фасок корпуса, стабилизация оригинального тритиевого люминофора, замена прокладок и опрессовка до 200м.", "accuracy_result": "+2.1 сек/сутки, водозащита 20 BAR подтверждена"}]}};
+  const STORAGE_KEY = "idrisov_demo_" + "Case19_ChronoRevive";
+  let localState = {};
+  try { localState = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch(e) {}
+  function saveState() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(localState)); } catch(e) {} }
+
+  const origFetch = window.fetch.bind(window);
+  window.fetch = async function(input, init) {
+    const urlStr = typeof input === "string" ? input : (input && input.url) || "";
+    if (!urlStr.includes("/api/")) {
+      return origFetch(input, init);
+    }
+
+    const method = ((init && init.method) || "GET").toUpperCase();
+    let body = {};
+    if (init && init.body && typeof init.body === "string") {
+      try { body = JSON.parse(init.body); } catch(e) {}
+    }
+
+    const pathOnly = urlStr.split("?")[0];
+    const urlPath = pathOnly.startsWith("http") ? new URL(pathOnly).pathname : pathOnly;
+
+    // 1. Exact GET match from extracted FastAPI TestClient data
+    if (method === "GET") {
+      if (MOCK_DB[urlStr]) return jsonResp(MOCK_DB[urlStr]);
+      if (MOCK_DB[urlPath]) return jsonResp(MOCK_DB[urlPath]);
+      for (const k of Object.keys(MOCK_DB)) {
+        if (k.split("?")[0] === urlPath) return jsonResp(MOCK_DB[k]);
+      }
+      if (urlPath.includes("/api/dataset/") && !MOCK_DB[urlPath]) {
+        const fallbackKey = Object.keys(MOCK_DB).find(k => k.startsWith("/api/dataset/"));
+        if (fallbackKey) return jsonResp(MOCK_DB[fallbackKey]);
+      }
+    }
+
+    // 2. Dynamic Calculators & Interactive Endpoints
+    if (urlPath.endsWith("/calculate")) {
+      const base = Number(body.base_price || body.area || body.days || 1) * 1500 || 4500;
+      const total = Math.max(2500, Math.round(base + (Number(body.weight_kg || 5) * 200)));
+      return jsonResp({
+        status: "ok",
+        total_price: total,
+        price_rub: total,
+        estimated_price: total,
+        duration_minutes: 90,
+        breakdown: { base: Math.round(total * 0.7), extras: Math.round(total * 0.3) },
+        currency: "RUB"
+      });
+    }
+
+    if (urlPath.includes("/estimate")) {
+      return jsonResp({
+        status: "ok",
+        total_rub: 3850000,
+        timeline_weeks: 8,
+        summary: "Смета сформирована (Static Demo Mode)",
+        estimate_id: "EST-" + Math.floor(1000 + Math.random() * 9000)
+      });
+    }
+
+    if (urlPath.includes("/query") || urlPath.includes("/historian/ask")) {
+      const q = body.question || body.query || body.prompt || "Анализ данных";
+      return jsonResp({
+        status: "ok",
+        answer: "Аналитический ответ (Demo AI): по запросу «" + q + "» выявлена устойчивая корреляция (r = 0.78, p < 0.01). Медианные значения находятся в пределах целевого диапазона без критических выбросов.",
+        metrics: [
+          { label: "Медиана", value: "42.8" },
+          { label: "Std Dev", value: "6.14" },
+          { label: "Выбросы", value: "2.1%" }
+        ]
+      });
+    }
+
+    if (urlPath.includes("/quiz/recommend")) {
+      return jsonResp({
+        status: "ok",
+        recommendation: {
+          name: "Ethiopia Yirgacheffe Kochere",
+          origin: "Ethiopia",
+          roast: "Light Filter",
+          notes: ["Бергамот", "Жасмин", "Персик"],
+          match_percent: 96
+        }
+      });
+    }
+
+    if (urlPath.includes("/verify-passcode")) {
+      return jsonResp({ status: "success", unlocked: true, valid: true, message: "VIP ACCESS GRANTED" });
+    }
+
+    if (urlPath.includes("/track-order")) {
+      return jsonResp({
+        status: "success",
+        order_id: urlPath.split("/").pop() || "CR-2026",
+        stage: "Регулировка хода и тест герметичности (Этап 4/5)",
+        master: "Виктор К.",
+        eta: "2 дня"
+      });
+    }
+
+    if (urlPath.includes("/tasks")) {
+      localState.tasks = localState.tasks || (MOCK_DB["/api/tasks"] && MOCK_DB["/api/tasks"].tasks) || [];
+      if (method === "POST" && urlPath.endsWith("/tasks")) {
+        const t = { id: Date.now(), title: body.title || "Новая задача", duration_hours: Number(body.duration_hours || 1), quadrant: body.quadrant || "urgent_important", is_completed: false };
+        localState.tasks.push(t);
+        saveState();
+        return jsonResp({ status: "ok", task: t, tasks: localState.tasks });
+      }
+      if (urlPath.includes("/toggle")) {
+        const id = Number(urlPath.split("/")[3]);
+        localState.tasks = localState.tasks.map(t => t.id === id ? { ...t, is_completed: !t.is_completed } : t);
+        saveState();
+        return jsonResp({ status: "ok", tasks: localState.tasks });
+      }
+      if (method === "DELETE") {
+        const id = Number(urlPath.split("/").pop());
+        localState.tasks = localState.tasks.filter(t => t.id !== id);
+        saveState();
+        return jsonResp({ status: "ok", tasks: localState.tasks });
+      }
+      return jsonResp({ tasks: localState.tasks });
+    }
+
+    if (urlPath === "/api/state") {
+      return jsonResp(MOCK_DB["/api/state"] || {
+        title: "LIVE RAP & TECH BATTLE // FINAL",
+        round: 3,
+        status: "VOTING_OPEN",
+        fighters: [
+          { id: "mc_a", name: "MC NEON", votes: 142, color: "#00f0ff" },
+          { id: "mc_b", name: "BYTE_KILLER", votes: 138, color: "#ff007f" }
+        ]
+      });
+    }
+
+    if (urlPath === "/api/vote") {
+      return jsonResp({ status: "ok", message: "Голос учтен!", voted: true });
+    }
+
+    // Default POST confirmation (bookings, orders, quotes, appraisals, seat reservations)
+    const refId = "ID-" + Math.floor(10000 + Math.random() * 90000);
+    return jsonResp({
+      status: "ok",
+      success: true,
+      id: refId,
+      booking_id: refId,
+      cert_id: refId,
+      voucher: "VIP-" + refId,
+      order_id: refId,
+      message: "Заявка #" + refId + " успешно оформлена и синхронизирована с Telegram-ботом @Idrisov_prod!"
+    });
+  };
+
+  function jsonResp(data) {
+    return new Response(JSON.stringify(data), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+})();
+</script>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CHRONOREVIVE // HAUTE HORLOGERIE RESTORATION</title>
+  <link rel="stylesheet" href="static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Cormorant+Garamond:ital,wght@0,500;0,700;1,400&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="atelier-wrapper">
+    <!-- Top Atelier Crest & Header -->
+    <header class="atelier-header">
+      <div class="crest-area">
+        <span class="heritage-year">MANUFACTURE D'HORLOGERIE // DEPUIS 1994</span>
+        <h1 class="atelier-title">CHRONOREVIVE</h1>
+        <p class="atelier-subtitle">ATELIER DE RESTAURATION VINTAGE & HAUTE MÉCANIQUE</p>
+      </div>
+
+      <div class="chronoscope-pill">
+        <div class="chrono-metric">
+          <span class="lbl">RATE:</span>
+          <span class="val" id="metric-rate">+1.2 s/d</span>
+        </div>
+        <div class="chrono-metric">
+          <span class="lbl">AMPLITUDE:</span>
+          <span class="val" id="metric-amp">305°</span>
+        </div>
+        <div class="chrono-metric">
+          <span class="lbl">BEAT ERROR:</span>
+          <span class="val" id="metric-err">0.1 ms</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Animated Clockwork Escapement Mechanism Section -->
+    <section class="atelier-card escapement-card">
+      <div class="card-bar">
+        <div>
+          <h2>SWISS LEVER ESCAPEMENT KINEMATICS</h2>
+          <span class="card-meta">СИМУЛЯЦИЯ АНКЕРНОГО СПУСКА // ИЗОХРОНИЗМ И СПИРАЛЬ BREGUET</span>
+        </div>
+        <div class="escapement-controls">
+          <button id="btn-sound-toggle" class="btn-ctrl">🔊 TICK AUDIO: ON</button>
+          <div class="vph-selector">
+            <span class="vph-label">BEAT:</span>
+            <button class="btn-vph active" data-vph="18000">18,000 vph</button>
+            <button class="btn-vph" data-vph="21600">21,600 vph</button>
+            <button class="btn-vph" data-vph="28800">28,800 vph</button>
+            <button class="btn-vph" data-vph="36000">36,000 vph</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="canvas-box">
+        <canvas id="escapement-canvas" width="1100" height="340"></canvas>
+        <div class="canvas-legend">
+          <span>● BALANCE WHEEL & SPIRAL</span>
+          <span style="color: #FF5E7E;">● RUBY PALLET FORK</span>
+          <span style="color: #FBBF24;">● CLUB-TOOTH ESCAPE WHEEL</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Macro Restoration Split-Screen Showcase -->
+    <section class="atelier-card macro-showcase-card">
+      <div class="card-bar">
+        <div>
+          <h2>MACRO RESTORATION ARCHIVE</h2>
+          <span class="card-meta">МУЗЕЙНАЯ РЕСТАВРАЦИЯ «ДО / ПОСЛЕ» // ОМЕГА 321 (1968)</span>
+        </div>
+        <span class="macro-badge">30X OPTICAL ZOOM</span>
+      </div>
+
+      <div class="split-slider-container" id="macro-slider-box">
+        <!-- Before layer -->
+        <div class="image-layer before-layer">
+          <div class="vintage-plate corroded">
+            <div class="plate-title">STATE: DISCOVERED // CORRODED RADIUM & CRACKED JEWEL (1968)</div>
+            <div class="movement-corrosion-art">
+              <div class="rust-spot" style="top: 30%; left: 40%;"></div>
+              <div class="rust-spot" style="top: 60%; left: 70%;"></div>
+              <div class="bridge-line oxid"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- After layer -->
+        <div class="image-layer after-layer" id="after-layer-view">
+          <div class="vintage-plate restored">
+            <div class="plate-title">STATE: RESTORED // HAND-MIRROR ANGLAGE & BLUED SCREWS</div>
+            <div class="movement-restored-art">
+              <div class="geneva-stripes"></div>
+              <div class="blued-screw" style="top: 30%; left: 40%;"></div>
+              <div class="blued-screw" style="top: 60%; left: 70%;"></div>
+              <div class="ruby-bearing" style="top: 50%; left: 50%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Draggable Divider -->
+        <div class="slider-handle" id="slider-divider">
+          <div class="handle-line"></div>
+          <div class="handle-knob">◀ ❖ ▶</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Lower Section: Order Tracker & Appraisal Form -->
+    <div class="bottom-grid">
+      <!-- Order Tracking Portal -->
+      <section class="atelier-card">
+        <div class="card-bar">
+          <div>
+            <h3>REPAIR ORDER STATUS TRACKING</h3>
+            <span class="card-meta">ПРОВЕРКА СТАДИИ РЕСТАВРАЦИИ ПО ID</span>
+          </div>
+        </div>
+
+        <div class="order-search-row">
+          <input type="text" id="track-id-input" value="CR-8492" placeholder="e.g. CR-8492">
+          <button id="btn-track-order" class="btn-search-order">VERIFY STATUS ➔</button>
+        </div>
+
+        <div class="order-result-box" id="order-result-container">
+          <div class="order-header-info">
+            <strong id="res-watch-model">Omega Speedmaster 1968 (Cal. 321)</strong>
+            <span id="res-client-tag">Клиент: Константин В.</span>
+          </div>
+
+          <div class="stages-timeline" id="stages-timeline-list">
+            <!-- Dynamically populated -->
+          </div>
+
+          <div class="master-verdict-box">
+            <span class="v-title">ЗАМЕТКА ГЛАВНОГО ЧАСОВЩИКА:</span>
+            <p id="res-master-notes">Амплитуда колебаний баланса доведена до 292°. Выкачка 0.1 мс. Финальная проверка изохронизма.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Online Quote-by-Photo Appraisal Form -->
+      <section class="atelier-card">
+        <div class="card-bar">
+          <div>
+            <h3>ONLINE QUOTE-BY-PHOTO</h3>
+            <span class="card-meta">ПРЕДВАРИТЕЛЬНАЯ ОЦЕНКА ПО ФОТОГРАФИИ</span>
+          </div>
+        </div>
+
+        <form id="appraisal-form" class="appraisal-form">
+          <div class="form-row">
+            <div class="field-wrap">
+              <label>МАРКА ЧАСОВ (BRAND):</label>
+              <input type="text" id="ap-brand" required placeholder="Patek Philippe, Omega, Rolex...">
+            </div>
+            <div class="field-wrap">
+              <label>КАЛИБР / МЕХАНИЗМ (ЕСЛИ ИЗВЕСТЕН):</label>
+              <input type="text" id="ap-caliber" placeholder="e.g. Calibre 321 / Valjoux 72">
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="field-wrap">
+              <label>ПРИМЕРНОЕ ДЕСЯТИЛЕТИЕ ВЫПУСКА:</label>
+              <select id="ap-decade">
+                <option value="1940-1950">1940 – 1950 (Ранний винтаж)</option>
+                <option value="1950-1960" selected>1950 – 1960 (Золотая эра хронографов)</option>
+                <option value="1960-1970">1960 – 1970 (Космическая эра)</option>
+                <option value="1970-1980">1970 – 1980 (Индустриальный нео-винтаж)</option>
+                <option value="1980-2000">1980 – 2000 (Современная классика)</option>
+              </select>
+            </div>
+            <div class="field-wrap">
+              <label>ВАШЕ ИМЯ И КОНТАКТ В TELEGRAM:</label>
+              <input type="text" id="ap-contact" required placeholder="@username или +7 (999) 000-00-00">
+            </div>
+          </div>
+
+          <div class="field-wrap">
+            <label>ОПИСАНИЕ НЕИСПРАВНОСТИ / ЗАДАЧИ РЕСТАВРАЦИИ:</label>
+            <textarea id="ap-defect" rows="3" required placeholder="Часы спешат на 5 минут в час, коррозия стрелок, разбито стекло, требуется репассаж и полировка корпуса..."></textarea>
+          </div>
+
+          <button type="submit" class="btn-submit-appraisal">ПОЛУЧИТЬ ОЦЕНКУ ЧАСОВЩИКА ➔</button>
+          <div id="appraisal-alert" class="appraisal-alert hidden"></div>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <script src="static/app.js"></script>
+</body>
+</html>
